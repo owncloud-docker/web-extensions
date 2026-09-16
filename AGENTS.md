@@ -35,6 +35,10 @@ that job; the app repo's GitHub-Release (zip + checksums) job is unaffected.
     `/usr/share/nginx/html/${PACKAGE}`, runs as the non-root `nginx` user (uid 101,
     the base image's own default).
 - `.github/workflows/main.yml` — **active** CI: polls for and builds pending releases
+- `scripts/resolve-pending-releases.sh` — the polling/dedup/diff logic `main.yml`'s
+  `prepare` job calls; extracted to its own file (rather than embedded in the
+  workflow YAML, as the sibling repos do for their much simpler resolve steps)
+  because it's real logic worth linting and running directly, not just YAML text
 - `.github/workflows/lint-pr-title.yml` — Conventional-Commit PR-title enforcement
 - `.github/dependabot.yml` — weekly GitHub Actions and Docker base-image dependency updates
 - `.github/CODEOWNERS` — review ownership
@@ -47,7 +51,8 @@ There is **no `CHANGELOG.md`** in this repository.
 ## Build & CI
 
 CI (`main.yml`) has no upstream tag to react to directly — GitHub Actions can't trigger
-off another repo's tag push — so a `prepare` job polls instead:
+off another repo's tag push — so a `prepare` job runs `scripts/resolve-pending-releases.sh`
+instead, which:
 
 1. `git ls-remote --tags` the upstream repo, parse tags matching `<package>-v<version>`.
 2. Keep only the **highest version per package** — this repo tracks the newest release
@@ -68,7 +73,14 @@ version-agnostic smoke-test target with no per-extension special-casing needed).
 Pushed to Docker Hub on non-PR events.
 
 Schedule: every 6 hours (`0 */6 * * *`), plus `workflow_dispatch` and `pull_request`
-(paths: `Dockerfile.multiarch`, `.github/workflows/main.yml`) for dry-run validation.
+(paths: `Dockerfile.multiarch`, `.github/workflows/main.yml`,
+`scripts/resolve-pending-releases.sh`) for dry-run validation.
+
+To run the polling logic directly (e.g. to check what's currently pending):
+
+```bash
+scripts/resolve-pending-releases.sh
+```
 
 To build one extension locally:
 
