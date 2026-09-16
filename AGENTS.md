@@ -51,12 +51,12 @@ off another repo's tag push — so a `prepare` job polls instead:
 
 1. `git ls-remote --tags` the upstream repo, parse tags matching `<package>-v<version>`.
 2. Keep only the **highest version per package** — this repo tracks the newest release
-   per extension, it does not backfill history. (Verified: without this step, the
-   first run would try to build over a dozen long-superseded versions like
-   `cast-v0.0.1`; with it, only genuinely never-published releases remain.)
+  per extension, it does not backfill history. (Verified: without this step, the
+  first run would try to build over a dozen long-superseded versions like
+  `cast-v0.0.1`; with it, only genuinely never-published releases remain.)
 3. Diff against Docker Hub's existing tags for `owncloud/web-extensions` (paginated).
 4. Whatever's missing becomes the `build` job's matrix — one leg per
-   `{package, version, ref, sha}`. Empty matrix short-circuits the `build` job entirely.
+  `{package, version, ref, sha}`. Empty matrix short-circuits the `build` job entirely.
 
 `build` calls the reusable `docker-build-native.yml` workflow (from
 [`owncloud-docker/ubuntu`](https://github.com/owncloud-docker/ubuntu)) per matrix leg:
