@@ -1,0 +1,111 @@
+name: Docker CI
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - Dockerfile.multiarch
+      - .github/workflows/main.yml
+  schedule:
+    - cron: 0 */6 * * *
+  workflow_dispatch:
+
+jobs:
+  lint:
+    uses: owncloud-docker/ubuntu/.github/workflows/lint-editorconfig.yml@master
+
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.resolve.outputs.matrix }}
+    steps:
+      - name: Resolve pending extension releases
+        id: resolve
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          UPSTREAM_REPO="https://github.com/owncloud/web-extensions.git"
+          DOCKER_REPO="owncloud/web-extensions"
+
+          # 1. List every upstream tag matching <package>-v<version>, as
+          #    "<package>\t<version>\t<tagname>\t<sha>".
+          ALL_TAGS=$(git ls-remote --tags "$UPSTREAM_REPO" | grep -v '\^{}$' | while IFS="$(printf '\t')" read -r sha ref; do
+            name="${ref#refs/tags/}"
+            if [[ "$name" =~ ^(.+)-v([0-9].*)$ ]]; then
+              printf '%s\t%s\t%s\t%s\n' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "$name" "$sha"
+            fi
+          done)
+
+          # 2. Keep only the highest version per package (this repo tracks the
+          #    newest release per extension, it does not backfill history).
+          UPSTREAM=$(printf '%s\n' "$ALL_TAGS" | sort -t "$(printf '\t')" -k1,1 -k2,2V | awk -F'\t' '{last[$1]=$0} END {for (p in last) print last[p]}')
+
+          # 3. List every tag already published under owncloud/web-extensions
+          #    on Docker Hub (paginated).
+          EXISTING=""
+          url="https://hub.docker.com/v2/repositories/${DOCKER_REPO}/tags?page_size=100"
+          while [ -n "$url" ] && [ "$url" != "null" ]; do
+            response=$(curl -sf "$url")
+            EXISTING="${EXISTING}$(echo "$response" | jq -r '.results[].name')"$'\n'
+            url=$(echo "$response" | jq -r '.next')
+          done
+
+          # 4. Diff: keep upstream package-version combos missing from Docker Hub.
+          MATRIX=$(printf '%s\n' "$UPSTREAM" | while IFS=$'\t' read -r package version ref sha; do
+            [ -z "$package" ] && continue
+            dockerTag="${package}-${version}"
+            if ! printf '%s\n' "$EXISTING" | grep -qxF "$dockerTag"; then
+              jq -n --arg package "$package" --arg version "$version" --arg ref "$ref" --arg sha "$sha" \
+                '{package: $package, version: $version, ref: $ref, sha: $sha}'
+            fi
+          done | jq -s -c .)
+
+          echo "matrix=${MATRIX}" >> "$GITHUB_OUTPUT"
+          echo "Pending builds: ${MATRIX}"
+
+  build:
+    needs: [lint, prepare]
+    if: needs.prepare.outputs.matrix != '[]'
+    strategy:
+      # Each extension is independent; one failing build shouldn't cancel the rest.
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.prepare.outputs.matrix) }}
+    uses: owncloud-docker/ubuntu/.github/workflows/docker-build-native.yml@master
+    with:
+      docker-repo-name: owncloud/web-extensions
+      docker-tag: ${{ matrix.package }}-${{ matrix.version }}
+      docker-context: .
+      docker-file: Dockerfile.multiarch
+      docker-hub-username: ${{ vars.DOCKERHUB_USERNAME }}
+      docker-build-args: |
+        GIT_REF=${{ matrix.ref }}
+        PACKAGE=${{ matrix.package }}
+        VERSION=${{ matrix.version }}
+        REVISION=${{ matrix.sha }}
+      docker-cache-from: type=gha
+      docker-cache-to: type=gha,mode=max
+      trivy-ignore-files: .trivyignore
+      docker-extra-tags: |
+        ${{ matrix.package }}-latest
+      smoke-test-port: "8080"
+      smoke-test-url: "http://localhost:8080/${{ matrix.package }}/manifest.json"
+      push: ${{ github.event_name != 'pull_request' }}
+    secrets:
+      docker-hub-password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+  update-docker-hub-description:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    uses: owncloud-docker/ubuntu/.github/workflows/docker-hub-desc.yml@master
+    with:
+      docker-repo-name: owncloud/web-extensions
+      docker-repo-description: ownCloud Web Extensions - community and supplementary extensions for the ownCloud Web frontend
+      docker-hub-username: ${{ vars.DOCKERHUB_USERNAME }}
+    secrets:
+      docker-hub-password: ${{ secrets.DOCKERHUB_TOKEN }}
