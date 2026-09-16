@@ -14,7 +14,7 @@ RUN pnpm install --frozen-lockfile
 RUN pnpm --filter "./packages/web-app-${PACKAGE}" build
 
 
-FROM owncloudops/nginx@sha256:8ca0c90c2f537fef6195ba8f5ebe6d6c00fe0a0c545f25ce8acd418a831a19a4
+FROM nginxinc/nginx-unprivileged:alpine@sha256:b54ac358b83fc6c965793fd271839b4ea4cdb6e99895bb19618cbc2ca152d972
 
 ARG PACKAGE
 ARG VERSION=""
@@ -32,13 +32,17 @@ LABEL maintainer="ownCloud GmbH <devops@owncloud.com>" \
   org.opencontainers.image.version="${VERSION}" \
   org.opencontainers.image.revision="${REVISION}"
 
-RUN rm -f /var/lib/nginx/html/*
+USER root
 
-COPY --from=builder /build/packages/web-app-${PACKAGE}/dist /var/lib/nginx/html/${PACKAGE}
+RUN apk upgrade --no-cache
+
+RUN rm -f /usr/share/nginx/html/*
+
+COPY --from=builder /build/packages/web-app-${PACKAGE}/dist /usr/share/nginx/html/${PACKAGE}
 
 EXPOSE 8080/tcp
 
-WORKDIR /var/lib/nginx/html
+WORKDIR /usr/share/nginx/html
 
 USER nginx
 
