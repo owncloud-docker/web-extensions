@@ -1,0 +1,4 @@
+# CVEs baked into web-extensions' built JS bundles or the nginx/OS base image.
+# Unfixable by this repo - requires an upstream owncloud/web-extensions fix, or a
+# base-image bump. Add entries only when a CVE is disclosed that upstream hasn't
+# patched yet.
