@@ -11,6 +11,7 @@ on:
       - Dockerfile.multiarch
       - .github/workflows/main.yml
       - scripts/resolve-pending-releases.sh
+      - scripts/ignored-releases.txt
   schedule:
     - cron: 0 */6 * * *
   workflow_dispatch:

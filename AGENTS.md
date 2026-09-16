@@ -35,10 +35,12 @@ that job; the app repo's GitHub-Release (zip + checksums) job is unaffected.
     `/usr/share/nginx/html/${PACKAGE}`, runs as the non-root `nginx` user (uid 101,
     the base image's own default).
 - `.github/workflows/main.yml` — **active** CI: polls for and builds pending releases
-- `scripts/resolve-pending-releases.sh` — the polling/dedup/diff logic `main.yml`'s
+- `scripts/resolve-pending-releases.sh` — the polling/diff logic `main.yml`'s
   `prepare` job calls; extracted to its own file (rather than embedded in the
   workflow YAML, as the sibling repos do for their much simpler resolve steps)
   because it's real logic worth linting and running directly, not just YAML text
+- `scripts/ignored-releases.txt` — manually-curated list of upstream release tags
+  to never build (see the file's own header for why this is manual, not inferred)
 - `.github/workflows/lint-pr-title.yml` — Conventional-Commit PR-title enforcement
 - `.github/dependabot.yml` — weekly GitHub Actions and Docker base-image dependency updates
 - `.github/CODEOWNERS` — review ownership
@@ -54,13 +56,20 @@ CI (`main.yml`) has no upstream tag to react to directly — GitHub Actions can'
 off another repo's tag push — so a `prepare` job runs `scripts/resolve-pending-releases.sh`
 instead, which:
 
-1. `git ls-remote --tags` the upstream repo, parse tags matching `<package>-v<version>`.
-2. Keep only the **highest version per package** — this repo tracks the newest release
-  per extension, it does not backfill history. (Verified: without this step, the
-  first run would try to build over a dozen long-superseded versions like
-  `cast-v0.0.1`; with it, only genuinely never-published releases remain.)
-3. Diff against Docker Hub's existing tags for `owncloud/web-extensions` (paginated).
-4. Whatever's missing becomes the `build` job's matrix — one leg per
+1. `git ls-remote --tags` the upstream repo, parse tags matching `<package>-v<version>`,
+  dropping anything listed in `scripts/ignored-releases.txt`.
+2. Diff the rest against Docker Hub's existing tags for `owncloud/web-extensions`
+  (paginated). **Every** non-ignored missing release gets built — there is
+  deliberately no "keep only the highest version per package" reduction here.
+  An earlier version of this script had one, and it silently dropped legitimate
+  releases: two patch releases landing in the same polling window would only
+  build the higher one, and it would stay unbuilt forever (the next run's dedup
+  would make the same choice again). Comparing version numbers can't reliably
+  tell "abandoned old release" apart from "patch to an older, still-maintained
+  line" either — there's no total order across concurrently-maintained lines.
+  `ignored-releases.txt` handles the one actual need (don't rebuild bootstrap-era
+  abandoned tags forever) as a manual, explicit, one-time decision instead.
+3. Whatever's missing becomes the `build` job's matrix — one leg per
   `{package, version, ref, sha}`. Empty matrix short-circuits the `build` job entirely.
 
 `build` calls the reusable `docker-build-native.yml` workflow (from
@@ -74,7 +83,8 @@ Pushed to Docker Hub on non-PR events.
 
 Schedule: every 6 hours (`0 */6 * * *`), plus `workflow_dispatch` and `pull_request`
 (paths: `Dockerfile.multiarch`, `.github/workflows/main.yml`,
-`scripts/resolve-pending-releases.sh`) for dry-run validation.
+`scripts/resolve-pending-releases.sh`, `scripts/ignored-releases.txt`) for dry-run
+validation.
 
 To run the polling logic directly (e.g. to check what's currently pending):
 

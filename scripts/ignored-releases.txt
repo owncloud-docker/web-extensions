@@ -1,0 +1,22 @@
+# Upstream owncloud/web-extensions release tags that resolve-pending-releases.sh
+# will never build, one tag per line (lines starting with # are comments).
+#
+# This is a one-time, manually-curated list, not something a version-comparison
+# heuristic derives at runtime - comparing version numbers can't reliably tell
+# "abandoned old release" apart from "legitimate patch to an older, still-maintained
+# line" (e.g. a backport fix released after a newer minor/major already shipped).
+# So: nothing gets added here automatically, and nothing here expires automatically.
+#
+# Add a tag here only when you've confirmed by hand that it's genuinely abandoned
+# history nobody wants built - not just "not the newest version of its package".
+#
+# Seeded at bootstrap with releases that predate this repo and were never
+# published because the upstream repo's own (broken) release automation never
+# got to them, and are superseded by several later releases already on Docker Hub:
+cast-v0.0.1
+cast-v0.1.0
+draw-io-v0.1.0
+external-sites-v0.1.0
+json-viewer-v0.1.0
+progress-bars-v0.1.0
+unzip-v0.1.0
