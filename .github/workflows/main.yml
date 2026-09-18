@@ -7,11 +7,6 @@ on:
   push:
     branches: [main]
   pull_request:
-    paths:
-      - Dockerfile.multiarch
-      - .github/workflows/main.yml
-      - scripts/resolve-pending-releases.sh
-      - scripts/ignored-releases.txt
   schedule:
     - cron: 0 */6 * * *
   workflow_dispatch:
@@ -30,7 +25,13 @@ jobs:
       - name: Resolve pending extension releases
         id: resolve
         shell: bash
-        run: echo "matrix=$(scripts/resolve-pending-releases.sh)" >> "$GITHUB_OUTPUT"
+        # Assign first, echo second: a command substitution that fails inside
+        # echo's argument does not fail the step (echo itself returns 0), so a
+        # Docker Hub outage would silently emit an empty matrix and `build`
+        # would die on fromJson('') instead of reporting the real error.
+        run: |
+          matrix=$(scripts/resolve-pending-releases.sh)
+          echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
 
   build:
     needs: [lint, prepare]

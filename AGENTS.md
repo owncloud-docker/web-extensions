@@ -81,10 +81,12 @@ directory ships a `manifest.json`, copied verbatim into `dist/` — a reliable,
 version-agnostic smoke-test target with no per-extension special-casing needed).
 Pushed to Docker Hub on non-PR events.
 
-Schedule: every 6 hours (`0 */6 * * *`), plus `workflow_dispatch` and `pull_request`
-(paths: `Dockerfile.multiarch`, `.github/workflows/main.yml`,
-`scripts/resolve-pending-releases.sh`, `scripts/ignored-releases.txt`) for dry-run
-validation.
+Schedule: every 6 hours (`0 */6 * * *`), plus `workflow_dispatch` and `pull_request`.
+The `pull_request` trigger is deliberately unfiltered: a path filter would stop `lint`
+from reporting on PRs that touch no Dockerfile, and a check that does not always report
+cannot be a required status check on `main`. Note that `build` is *not* a per-PR
+Dockerfile gate — it still only runs when the resolver finds a pending release, so a
+PR can change `Dockerfile.multiarch` and merge without any image having been built.
 
 To run the polling logic directly (e.g. to check what's currently pending):
 
@@ -142,6 +144,8 @@ The image exposes port `8080` and serves its extension under `/<PACKAGE>/`.
   the extensions' application codebase. Application changes belong upstream.
 - One Docker Hub repo, many tags — one per extension per version, plus a rolling
   `<extension>-latest` per extension. There is no single "the" image.
-- The polling `prepare` job is the only thing that decides what gets built; it always
-  tracks the newest release per extension, never older ones.
+- The polling `prepare` job is the only thing that decides what gets built: every
+  upstream release tag missing from Docker Hub and not listed in
+  `scripts/ignored-releases.txt`, regardless of whether a newer version of the same
+  extension already exists. Do not reintroduce a "newest version only" reduction.
 - License is **Apache-2.0**, the OSPO's ecosystem-wide target; no relicensing needed.
