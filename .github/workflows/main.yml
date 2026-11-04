@@ -54,7 +54,9 @@ jobs:
         VERSION=${{ matrix.version }}
         REVISION=${{ matrix.sha }}
       docker-cache-from: type=gha
-      docker-cache-to: type=gha,mode=max
+      # PR runs only read the cache: their entries count against the repo-wide
+      # 10 GB LRU and would evict the entries the publishing runs depend on.
+      docker-cache-to: ${{ github.event_name != 'pull_request' && 'type=gha,mode=max' || '' }}
       trivy-ignore-files: .trivyignore
       docker-extra-tags: |
         ${{ matrix.package }}-latest
