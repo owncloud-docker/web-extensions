@@ -36,11 +36,27 @@ while [ -n "$url" ] && [ "$url" != "null" ]; do
   url=$(echo "$response" | jq -r '.next')
 done
 
-# 3. Diff: keep upstream package-version combos missing from Docker Hub.
+# Scratch repo used to check, for a candidate tag, that packages/web-app-<name>
+# exists at that ref (Dockerfile.multiarch assumes that layout). Tree-only fetch.
+CHECK_REPO=$(mktemp -d)
+trap 'rm -rf "$CHECK_REPO"' EXIT
+git init -q --bare "$CHECK_REPO"
+
+# 3. Diff: keep upstream package-version combos missing from Docker Hub, and
+#    skip tags whose package doesn't follow the packages/web-app-<name> layout
+#    (e.g. a future ai-llm-proxy-v0.1.0 tag) - they'd fail the build.
 MATRIX=$(printf '%s\n' "$UPSTREAM" | while IFS=$'\t' read -r package version ref sha; do
   [ -z "$package" ] && continue
   dockerTag="${package}-${version}"
   if ! printf '%s\n' "$EXISTING" | grep -qxF "$dockerTag"; then
+    if ! git -C "$CHECK_REPO" fetch -q --depth=1 --filter=blob:none "$UPSTREAM_REPO" "refs/tags/${ref}"; then
+      echo "Failed to fetch ${ref} from ${UPSTREAM_REPO}" >&2
+      exit 1
+    fi
+    if ! git -C "$CHECK_REPO" cat-file -e "FETCH_HEAD:packages/web-app-${package}" 2>/dev/null; then
+      echo "Skipping ${ref}: no packages/web-app-${package} at that ref" >&2
+      continue
+    fi
     jq -n --arg package "$package" --arg version "$version" --arg ref "$ref" --arg sha "$sha" \
       '{package: $package, version: $version, ref: $ref, sha: $sha}'
   fi
