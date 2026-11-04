@@ -3,6 +3,12 @@ name: Docker CI
 permissions:
   contents: read
 
+# Cancel superseded PR runs; never cancel push/schedule runs, which may be
+# mid-publish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 on:
   push:
     branches: [main]
