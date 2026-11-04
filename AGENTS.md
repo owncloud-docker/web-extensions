@@ -81,7 +81,14 @@ directory ships a `manifest.json`, copied verbatim into `dist/` — a reliable,
 version-agnostic smoke-test target with no per-extension special-casing needed).
 Pushed to Docker Hub on non-PR events.
 
-Schedule: every 6 hours (`0 */6 * * *`), plus `workflow_dispatch` and `pull_request`
+Schedule: every 6 hours (`0 */6 * * *`) to pick up new releases, and weekly
+(`0 3 * * 0`) to also rebuild each extension's newest release
+(`REBUILD_NEWEST=true`) so base-image CVE fixes reach published images — the tags
+`<package>-<version>` and `<package>-latest` are re-pushed over the existing ones,
+and an immutable `<package>-<version>-<YYYYMMDD>` tag is added per build. Only the
+newest release per package is force-rebuilt; older tags are left as they are.
+`workflow_dispatch` has a `rebuild-newest` input for the same on demand. It also runs on
+`pull_request`
 (paths: `Dockerfile.multiarch`, `.github/workflows/main.yml`,
 `scripts/resolve-pending-releases.sh`, `scripts/ignored-releases.txt`) for dry-run
 validation.
@@ -142,6 +149,6 @@ The image exposes port `8080` and serves its extension under `/<PACKAGE>/`.
   the extensions' application codebase. Application changes belong upstream.
 - One Docker Hub repo, many tags — one per extension per version, plus a rolling
   `<extension>-latest` per extension. There is no single "the" image.
-- The polling `prepare` job is the only thing that decides what gets built; it always
-  tracks the newest release per extension, never older ones.
+- The polling `prepare` job is the only thing that decides what gets built: releases
+  missing from Docker Hub, plus (weekly / on demand) each extension's newest release.
 - License is **Apache-2.0**, the OSPO's ecosystem-wide target; no relicensing needed.

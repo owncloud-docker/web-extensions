@@ -13,8 +13,17 @@ on:
       - scripts/resolve-pending-releases.sh
       - scripts/ignored-releases.txt
   schedule:
+    # Pick up newly released extensions.
     - cron: 0 */6 * * *
+    # Weekly: rebuild each extension's newest release so base-image fixes
+    # reach published images (offset from the 6-hourly run).
+    - cron: 0 3 * * 0
   workflow_dispatch:
+    inputs:
+      rebuild-newest:
+        description: Also rebuild (and re-push) each extension's newest release
+        type: boolean
+        default: false
 
 jobs:
   lint:
@@ -24,13 +33,24 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.resolve.outputs.matrix }}
+      date: ${{ steps.resolve.outputs.date }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Resolve pending extension releases
         id: resolve
         shell: bash
-        run: echo "matrix=$(scripts/resolve-pending-releases.sh)" >> "$GITHUB_OUTPUT"
+        env:
+          EVENT_SCHEDULE: ${{ github.event.schedule }}
+          REBUILD_INPUT: ${{ inputs.rebuild-newest }}
+        run: |
+          REBUILD_NEWEST=false
+          if [ "$EVENT_SCHEDULE" = "0 3 * * 0" ] || [ "$REBUILD_INPUT" = "true" ]; then
+            REBUILD_NEWEST=true
+          fi
+          export REBUILD_NEWEST
+          echo "matrix=$(scripts/resolve-pending-releases.sh)" >> "$GITHUB_OUTPUT"
+          echo "date=$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
 
   build:
     needs: [lint, prepare]
@@ -55,8 +75,11 @@ jobs:
       docker-cache-from: type=gha
       docker-cache-to: type=gha,mode=max
       trivy-ignore-files: .trivyignore
-      # Only the highest released version floats <package>-latest.
-      docker-extra-tags: ${{ matrix.latest && format('{0}-latest', matrix.package) || '' }}
+      # Only the highest released version floats <package>-latest. The dated tag
+      # is an immutable record of each (re)build, for pinning across rebuilds.
+      docker-extra-tags: |
+        ${{ matrix.latest && format('{0}-latest', matrix.package) || '' }}
+        ${{ matrix.package }}-${{ matrix.version }}-${{ needs.prepare.outputs.date }}
       smoke-test-port: "8080"
       smoke-test-url: "http://localhost:8080/${{ matrix.package }}/manifest.json"
       push: ${{ github.event_name != 'pull_request' }}

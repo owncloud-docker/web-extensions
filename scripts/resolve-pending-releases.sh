@@ -4,6 +4,9 @@
 # anything listed in ignored-releases.txt (see that file for why it exists
 # and why it's a manually-curated list rather than a version-comparison rule).
 #
+# Set REBUILD_NEWEST=true to also include each package's newest release when
+# it is already published (see step 3).
+#
 # Used by .github/workflows/main.yml's `prepare` job, which has no native way
 # to trigger off tags in a *different* repo, so it polls instead.
 set -euo pipefail
@@ -37,15 +40,21 @@ while [ -n "$url" ] && [ "$url" != "null" ]; do
 done
 
 # 3. Diff: keep upstream package-version combos missing from Docker Hub.
+#    With REBUILD_NEWEST=true, also keep each package's highest release even if
+#    it is already published, so base-image CVE fixes reach published images
+#    (the tags are re-pushed over the existing ones). Older releases are never
+#    force-rebuilt.
 MATRIX=$(printf '%s\n' "$UPSTREAM" | while IFS=$'\t' read -r package version ref sha; do
   [ -z "$package" ] && continue
   dockerTag="${package}-${version}"
-  if ! printf '%s\n' "$EXISTING" | grep -qxF "$dockerTag"; then
-    # `latest` is true only for the highest plain-numeric release of the
-    # package, so a patch to an older line never takes <package>-latest.
-    highest=$(printf '%s\n' "$UPSTREAM" | awk -F'\t' -v p="$package" '$1 == p && $2 ~ /^[0-9]+(\.[0-9]+)*$/ {print $2}' | sort -V | tail -1)
-    latest=false
-    [ "$version" = "$highest" ] && latest=true
+  # `latest` is true only for the highest plain-numeric release of the
+  # package, so a patch to an older line never takes <package>-latest.
+  highest=$(printf '%s\n' "$UPSTREAM" | awk -F'\t' -v p="$package" '$1 == p && $2 ~ /^[0-9]+(\.[0-9]+)*$/ {print $2}' | sort -V | tail -1)
+  latest=false
+  [ "$version" = "$highest" ] && latest=true
+  published=false
+  printf '%s\n' "$EXISTING" | grep -qxF "$dockerTag" && published=true
+  if [ "$published" = false ] || { [ "${REBUILD_NEWEST:-false}" = true ] && [ "$latest" = true ]; }; then
     jq -n --arg package "$package" --arg version "$version" --arg ref "$ref" --arg sha "$sha" --argjson latest "$latest" \
       '{package: $package, version: $version, ref: $ref, sha: $sha, latest: $latest}'
   fi
