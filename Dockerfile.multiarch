@@ -40,6 +40,10 @@ RUN rm -f /usr/share/nginx/html/*
 
 COPY --from=builder /build/packages/web-app-${PACKAGE}/dist /usr/share/nginx/html/${PACKAGE}
 
+# The owncloud/ocis deployment examples copy assets from the legacy
+# owncloudops/nginx path (/var/lib/nginx/html/<ext>); keep it valid.
+RUN mkdir -p /var/lib/nginx && ln -s /usr/share/nginx/html /var/lib/nginx/html
+
 EXPOSE 8080/tcp
 
 WORKDIR /usr/share/nginx/html
