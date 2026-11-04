@@ -33,6 +33,34 @@ jobs:
           matrix=$(scripts/resolve-pending-releases.sh)
           echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
 
+  # Fixed dry-run build of one known-good release, so a PR touching the
+  # Dockerfile is always built, Trivy-scanned and smoke-tested - independent of
+  # which upstream releases happen to be pending - and so branch protection has
+  # a stable check name to require (the `build` matrix legs embed their values
+  # in their names and can't be pinned). Bump the ref if it is ever removed
+  # upstream.
+  build-check:
+    if: github.event_name == 'pull_request'
+    needs: lint
+    uses: owncloud-docker/ubuntu/.github/workflows/docker-build-native.yml@master
+    with:
+      docker-repo-name: owncloud/web-extensions
+      docker-tag: check-unzip-0.5.1
+      docker-context: .
+      docker-file: Dockerfile.multiarch
+      docker-build-args: |
+        GIT_REF=unzip-v0.5.1
+        PACKAGE=unzip
+        VERSION=0.5.1
+        REVISION=pr-check
+      docker-cache-from: type=gha
+      trivy-ignore-files: .trivyignore
+      smoke-test-port: "8080"
+      smoke-test-url: "http://localhost:8080/unzip/manifest.json"
+      push: false
+    secrets:
+      docker-hub-password: ${{ secrets.DOCKERHUB_TOKEN }}
+
   build:
     needs: [lint, prepare]
     if: needs.prepare.outputs.matrix != '[]'
