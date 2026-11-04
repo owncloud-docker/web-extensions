@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Prints a JSON array of {package, version, ref, sha} for every extension
+# Prints a JSON array of {package, version, ref, sha, latest} for every extension
 # release published upstream but not yet published to Docker Hub, excluding
 # anything listed in ignored-releases.txt (see that file for why it exists
 # and why it's a manually-curated list rather than a version-comparison rule).
@@ -41,8 +41,13 @@ MATRIX=$(printf '%s\n' "$UPSTREAM" | while IFS=$'\t' read -r package version ref
   [ -z "$package" ] && continue
   dockerTag="${package}-${version}"
   if ! printf '%s\n' "$EXISTING" | grep -qxF "$dockerTag"; then
-    jq -n --arg package "$package" --arg version "$version" --arg ref "$ref" --arg sha "$sha" \
-      '{package: $package, version: $version, ref: $ref, sha: $sha}'
+    # `latest` is true only for the highest plain-numeric release of the
+    # package, so a patch to an older line never takes <package>-latest.
+    highest=$(printf '%s\n' "$UPSTREAM" | awk -F'\t' -v p="$package" '$1 == p && $2 ~ /^[0-9]+(\.[0-9]+)*$/ {print $2}' | sort -V | tail -1)
+    latest=false
+    [ "$version" = "$highest" ] && latest=true
+    jq -n --arg package "$package" --arg version "$version" --arg ref "$ref" --arg sha "$sha" --argjson latest "$latest" \
+      '{package: $package, version: $version, ref: $ref, sha: $sha, latest: $latest}'
   fi
 done | jq -s -c .)
 
